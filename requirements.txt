@@ -1,0 +1,4 @@
+flask==2.2.3
+celery==5.2.7
+flower==1.2.0
+Redis
