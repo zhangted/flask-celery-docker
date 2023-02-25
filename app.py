@@ -1,19 +1,7 @@
-from flask import Flask
-from celery import Celery, Task
-import redis
 import os
-
-def celery_init_app(app: Flask) -> Celery:
-  class FlaskTask(Task):
-      def __call__(self, *args: object, **kwargs: object) -> object:
-          with app.app_context():
-              return self.run(*args, **kwargs)
-
-  celery_app = Celery(app.name, task_cls=FlaskTask)
-  celery_app.config_from_object(app.config["CELERY"])
-  celery_app.set_default()
-  app.extensions["celery"] = celery_app
-  return celery_app
+from flask import Flask, jsonify
+from helpers import celery_init_app
+from clients import get_redis_connection
 
 flask_app = Flask(__name__)
 flask_app.config.from_mapping(
@@ -25,17 +13,22 @@ flask_app.config.from_mapping(
 )
 celery_app = celery_init_app(flask_app)
 
-@celery_app.task
-def task1():
-  print('task received')
+@flask_app.before_first_request
+def connect_to_services():
+  flask_app.config['REDIS_CLIENT'] = get_redis_connection()
 
 @flask_app.route("/")
-def hello():
+def index():
   return 'Hello, World!'
 
+@flask_app.route("/check_redis")
+def check_redis_conn():
+  if flask_app.config['REDIS_CLIENT'] is not None: return 'Redis connection is live'
+  return 'No redis connection'
+
 @flask_app.route("/queue_task")
-def hello2():
-  task1.delay()
+def queue_task():
+  celery_app.send_task('tasks.task1._dummy_task_func')
   return 'task queued. check console for output'
 
 if __name__ == "__main__":
